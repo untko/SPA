@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SVG Editor</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Minimal styles for color/range inputs */
+        input[type="color"] { 
+            -webkit-appearance: none; -moz-appearance: none; appearance: none; 
+            width: 50px; /* Smaller width */
+            height: 40px; /* Smaller height */
+            padding: 0; border: none; border-radius: 8px; cursor: pointer; 
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; border-radius: 8px; }
+        input[type="color"]::-webkit-color-swatch { border: 2px solid #e2e8f0; border-radius: 8px; }
+        input[type="color"]::-moz-color-swatch { border: 2px solid #e2e8f0; border-radius: 8px; }
+        input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 8px; background: #e2e8f0; border-radius: 9999px; outline: none; opacity: 0.7; transition: opacity 0.2s; }
+        input[type="range"]:hover { opacity: 1; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 16px; height: 16px; background: #3b82f6; border-radius: 50%; cursor: pointer; }
+        input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; background: #3b82f6; border-radius: 50%; cursor: pointer; }
+        
+        /* Summary for <details> */
+        summary { cursor: pointer; font-weight: 600; padding: 0.75rem; background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; transition: background-color 0.2s; }
+        summary:hover { background-color: #f1f5f9; }
+
+        /* Style for the drop zone / preview */
+        .drop-zone {
+            border: 2px dashed #cbd5e1; /* border-gray-300 */
+            border-radius: 8px;
+            text-align: center;
+            font-size: 0.875rem;
+            color: #64748b; /* text-gray-500 */
+            background-color: #f8fafc; /* bg-slate-50 */
+            cursor: pointer;
+            transition: background-color 0.2s, border-color 0.2s;
+            overflow: hidden; /* To contain the preview SVG */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .drop-zone.dragover {
+            border-color: #0284c7; /* border-sky-500 */
+            background-color: #e0f2fe; /* bg-sky-100 */
+        }
+        .layer-preview-thumbnail {
+            width: 80px;  /* 5rem */
+            height: 80px; /* 5rem */
+            padding: 4px; /* p-1 */
+        }
+        .layer-preview-thumbnail svg {
+            pointer-events: none; /* Make sure SVG doesn't block clicks */
+        }
+        
+        /* Style for the export boundary */
+        #export-boundary {
+            fill: none;
+            stroke: #cbd5e1; /* border-gray-300 */
+            stroke-width: 2px; /* Stroke width */
+            stroke-dasharray: 8 8;
+            pointer-events: none; /* Make it non-interactive */
+        }
+        
+        /* NEW: Snapping guides */
+        #guide-v, #guide-h {
+            stroke: #3b82f6; /* blue-600 */
+            stroke-width: 2px;
+            stroke-dasharray: 6 6;
+            display: none; /* Hidden by default */
+            pointer-events: none;
+        }
+        
+        /* Style for selected layer */
+        g {
+            cursor: grab; /* Show grab cursor on hover */
+        }
+        g.selected {
+            cursor: grabbing; /* Show grabbing cursor when selected */
+        }
+        
+        /* Background Selector Styles */
+        .bg-checkerboard {
+            background-image: linear-gradient(45deg, #ccc 25%, transparent 25%), 
+                              linear-gradient(135deg, #ccc 25%, transparent 25%),
+                              linear-gradient(45deg, transparent 75%, #ccc 75%), 
+                              linear-gradient(135deg, transparent 75%, #ccc 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 10px 0, 10px 10px, 0 10px;
+        }
+        .bg-selector-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            border: 2px solid #cbd5e1;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .bg-selector-btn:hover {
+            border-color: #94a3b8;
+        }
+        .bg-selector-btn.active-bg {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.5);
+        }
+        
+        /* Ensure canvas is responsive */
+        #logo-canvas {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 1 / 1;
+        }
+        
+        /* Minimal Alignment/Transform Buttons */
+        .align-btn, .transform-btn {
+            padding: 6px; /* Reduced padding */
+            border-radius: 6px;
+            background-color: #f1f5f9; /* bg-slate-100 */
+            color: #64748b; /* text-gray-500 */
+            transition: all 0.2s;
+        }
+        .align-btn:hover, .transform-btn:hover {
+            background-color: #e2e8f0; /* bg-slate-200 */
+            color: #1e293b; /* text-slate-700 */
+        }
+        .align-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px; /* Reduced gap */
+            width: min-content; /* Fit content */
+        }
+        
+        /* NEW: Active state for transform buttons */
+        .transform-btn.active-transform {
+            background-color: #3b82f6; /* bg-blue-600 */
+            color: white;
+        }
+        
+        /* Global Drop Zone Style */
+        #global-drop-zone {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 999;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: none; /* Hidden by default */
+            align-items: center;
+            justify-content: center;
+            pointer-events: none; /* Allow clicks through */
+        }
+        #global-drop-zone.visible {
+            display: flex;
+            pointer-events: all; /* Intercept drop */
+        }
+        #global-drop-zone-indicator {
+            padding: 3rem 4rem;
+            background-color: white;
+            border-radius: 12px;
+            border: 4px dashed #3b82f6;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #3b82f6;
+            pointer-events: none; /* Don't intercept drop */
+        }
+
+    </style>
+</head>
+<body class="bg-gray-100 flex items-center justify-center min-h-screen font-sans py-12 px-4">
+
+    <!-- Main container is now wider on desktop (max-w-7xl) -->
+    <div class="bg-white rounded-xl shadow-2xl p-8 max-w-7xl w-full">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">SVG Editor</h1>
+
+        <!-- New: Two-column grid for large screens -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 lg:gap-8">
+            
+            <!-- Left Column: Canvas -->
+            <div class="w-full">
+                <!-- Background Preview Controls -->
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Canvas Background</label>
+                    <div id="bg-selector" class="flex items-center space-x-2">
+                        <button data-bg-class="bg-white" class="bg-selector-btn" style="background-color: #fff;" title="White Background"></button>
+                        <button data-bg-class="bg-black" class="bg-selector-btn" style="background-color: #000;" title="Black Background"></button>
+                        <button data-bg-class="bg-checkerboard" class="bg-selector-btn bg-checkerboard" title="Transparent Background"></button>
+                    </div>
+                </div>
+        
+                <!-- SVG Logo Display -->
+                <div id="canvas-bg" class="flex justify-center p-4 bg-white rounded-lg border border-gray-200 aspect-square">
+                    <!-- Centered viewBox. New layers will be appended here by JS -->
+                    <svg id="logo-canvas" viewBox="-160 -279 945 945" xmlns="http://www.w3.org/2000/svg">
+                        <!-- Export Boundary Marker - FIXED: Made 1px smaller to prevent clipping -->
+                        <rect id="export-boundary" x="-159" y="-278" width="942" height="942" />
+                        
+                        <!-- Snapping Guides -->
+                        <line id="guide-v" x1="312.5" x2="312.5" y1="-279" y2="666" />
+                        <line id="guide-h" x1="-160" x2="785" y1="193.5" y2="193.5" />
+                        
+                        <!-- SVG layers are dynamically added here -->
+                    </svg>
+                </div>
+            </div>
+
+            <!-- Right Column: Controls -->
+            <div class="w-full space-y-6 mt-6 lg:mt-0">
+                
+                <!-- Container for dynamic layer controls -->
+                <div id="layer-controls-container" class="space-y-6 max-h-[60vh] overflow-y-auto pr-2">
+                    <!-- Layer controls are dynamically added here -->
+                </div>
+    
+                <!-- Add Layer Button -->
+                <div class="pt-4 border-t border-gray-200">
+                    <button id="add-layer-btn" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50">
+                        + Add New Layer
+                    </button>
+                </div>
+    
+                <!-- Export Button -->
+                <div class="pt-4 border-t border-gray-200">
+                    <button id="export-svg-btn" class="w-full bg-blue-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-blue-700 transition duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50">
+                        Export as SVG
+                    </button>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+    
+    <!-- NEW: Global Drop Zone -->
+    <div id="global-drop-zone">
+        <div id="global-drop-zone-indicator">
+            Drop SVG files to add new layers
+        </div>
+    </div>
+
+    <script>
+        // --- Global State ---
+        let layers = []; // Array to hold layer objects
+        const svgCanvas = document.getElementById('logo-canvas');
+        const controlsContainer = document.getElementById('layer-controls-container');
+        const addLayerBtn = document.getElementById('add-layer-btn');
+        const exportBtn = document.getElementById('export-svg-btn');
+        const globalDropZone = document.getElementById('global-drop-zone');
+        
+        // BBox of the export boundary
+        const exportRect = {
+            x: -160,
+            y: -279,
+            width: 945,
+            height: 945
+        };
+        
+        // Snapping guides and state
+        let guideV, guideH;
+        const snapThreshold = 5; // Screen pixels for snapping
+        const canvasCenter = {
+            x: exportRect.x + exportRect.width / 2, // 312.5
+            y: exportRect.y + exportRect.height / 2  // 193.5
+        };
+
+
+        // --- Drag State ---
+        let isDragging = false;
+        let selectedLayerId = null;
+        let dragStartMouse = { x: 0, y: 0 }; // Mouse position in screen pixels
+        let dragStartLayer = { x: 0, y: 0 }; // Layer transform in SVG units
+        let svgRect;
+        let svgViewBox;
+
+
+        // --- Layer Management ---
+        
+        /**
+         * Adds a new layer to the canvas and controls
+         * @param {string} svgContent - The SVG inner HTML for the new layer
+         * @returns {number} The ID of the newly created layer
+         */
+        function addNewLayer(svgContent = '') {
+            const layerId = Date.now();
+            const newLayer = {
+                id: layerId,
+                name: `Layer ${layers.length + 1}`,
+                content: svgContent, // Inner HTML of the <g> tag
+                fill: '#000000',
+                stroke: '#000000',
+                strokeWidth: 0,
+                overrideFill: false,
+                overrideStroke: false,
+                x: 0,
+                y: 0,
+                scale: 1.0,
+                // NEW: Transform states
+                rotate: 0,
+                flipX: false,
+                flipY: false,
+                bbox: null // Will be calculated on content update
+            };
+            layers.push(newLayer);
+
+            // 1. Create SVG Element
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('id', `layer-g-${layerId}`);
+            // Content will be injected by updateLayer
+            svgCanvas.appendChild(g);
+            
+            // Add drag listener to the layer group
+            g.addEventListener('mousedown', (e) => {
+                e.stopPropagation(); // Stop click from bubbling to canvas
+                isDragging = true;
+                
+                // Get SVG screen position info
+                svgRect = svgCanvas.getBoundingClientRect();
+                svgViewBox = svgCanvas.viewBox.baseVal;
+                
+                // Store mouse start in screen pixels
+                dragStartMouse = { x: e.clientX, y: e.clientY };
+                
+                // Store layer's current transform
+                const layer = layers.find(l => l.id === layerId);
+                if (layer) {
+                    dragStartLayer = { x: layer.x, y: layer.y };
+                }
+                
+                // Update UI for selection
+                selectLayer(layerId);
+            });
+
+            // 2. Create Control HTML
+            const controlHTML = createLayerControlHTML(layerId, newLayer.name);
+            controlsContainer.insertAdjacentHTML('beforeend', controlHTML);
+
+            // 3. Wire up listeners for the new controls
+            wireLayerControls(layerId);
+
+            // 4. Set initial values
+            updateLayer(layerId, { ...newLayer }, true);
+            
+            // 5. Select the new layer
+            selectLayer(layerId);
+            
+            return layerId;
+        }
+
+        /**
+         * Creates the HTML string for a new layer's control block
+         * @param {number} layerId - The unique ID for the layer
+         * @param {string} name - The display name of the layer
+         * @returns {string} The HTML string
+         */
+        function createLayerControlHTML(layerId, name) {
+            // Icons for alignment buttons
+            const alignIcons = {
+                left: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M4 3h2v18H4zM20 7H8v4h12zM20 13H8v4h12z"/></svg>`,
+                hCenter: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M11 3h2v18h-2zM20 7H4v4h16zM20 13H4v4h16z"/></svg>`,
+                right: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M18 3h2v18h-2zM4 7h12v4H4zM4 13h12v4H4z"/></svg>`,
+                top: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M18 3H6v2h12zM12 7V17H8V7zM16 7V17h-4V7z"/></svg>`,
+                vCenter: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M3 11h18v2H3zM7 4v5h4V4zM7 15v5h4v-5zM13 4v5h4V4zM13 15v5h4v-5z"/></svg>`,
+                bottom: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M3 18h18v2H3zM7 4v8h4V4zM13 4v8h4V4z"/></svg>`
+            };
+            
+            // NEW: Icons for transform buttons
+            const transformIcons = {
+                flipX: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M11 3v18h2V3h-2zM4 7l7 5-7 5V7zm16 0v10l-7-5 7-5z"/></svg>`,
+                flipY: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="w-5 h-5"><path d="M3 11h18v2H3v-2zM7 4l5 7 5-7H7zM7 20v-10l5 7 5-7v10H7z"/></svg>`
+            };
+
+
+            // UPDATED HTML with 3rd row for Rotate/Flip
+            return `
+                <div class="layer-control-block border border-gray-200 rounded-lg" data-layer-id="${layerId}">
+                    <details>
+                        <summary class="flex justify-between items-center pr-4">
+                            <span class="font-semibold">${name}</span>
+                            <button class="remove-btn text-xs text-red-500 hover:text-red-700 font-semibold p-1">Remove</button>
+                        </summary>
+                        <div class="p-4 pt-6 space-y-4">
+                            
+                            <!-- ROW 1: Preview, Align, Fill, Scale -->
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-700">Transform</label>
+                                <div class="flex items-center space-x-3">
+                                    
+                                    <div class="layer-preview-thumbnail drop-zone flex-shrink-0" title="Drop .svg file or click to upload">
+                                        <span class="text-xs text-center text-gray-500">Drop/Click to add SVG</span>
+                                    </div>
+                                    <input type="file" class="file-input" accept=".svg" style="display: none;">
+
+                                    <div class="align-controls flex-shrink-0">
+                                        <button class="align-btn flex justify-center" data-align="left" title="Align Left">${alignIcons.left}</button>
+                                        <button class="align-btn flex justify-center" data-align="hCenter" title="Align Horizontal Center">${alignIcons.hCenter}</button>
+                                        <button class="align-btn flex justify-center" data-align="right" title="Align Right">${alignIcons.right}</button>
+                                        <button class="align-btn flex justify-center" data-align="top" title="Align Top">${alignIcons.top}</button>
+                                        <button class="align-btn flex justify-center" data-align="vCenter" title="Align Vertical Center">${alignIcons.vCenter}</button>
+                                        <button class="align-btn flex justify-center" data-align="bottom" title="Align Bottom">${alignIcons.bottom}</button>
+                                    </div>
+                                    <input type="color" class="fill-picker flex-shrink-0" title="Fill Color" value="#000000">
+                                    <input type="range" class="scale-slider w-full" min="0.1" max="2" value="1.0" step="0.01" title="Scale">
+                                </div>
+                            </div>
+                            
+                            <!-- ROW 2: Stroke -->
+                            <div class="space-y-2">
+                                <div class="flex items-center space-x-3">
+                                    <div class="flex items-center flex-shrink-0" title="Enable Stroke">
+                                        <input type="checkbox" id="enable-stroke-${layerId}" class="enable-stroke-check h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
+                                        <label for="enable-stroke-${layerId}" class="ml-2 block text-sm font-medium text-gray-700">Stroke</label>
+                                    </div>
+                                    <div class="stroke-controls-wrapper hidden flex items-center space-x-3 w-full">
+                                        <input type="color" class="stroke-picker flex-shrink-0" title="Stroke Color" value="#000000">
+                                        <input type="range" class="stroke-width-slider w-full" min="0" max="50" value="1" step="1" title="Stroke Width">
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- NEW ROW 3: Rotate & Flip -->
+                            <div class="space-y-2">
+                                <label class="block text-sm font-medium text-gray-700">Rotate & Flip</label>
+                                <div class="flex items-center space-x-3">
+                                    <button class="transform-btn flip-x-btn flex-shrink-0" title="Flip Horizontal">${transformIcons.flipX}</button>
+                                    <button class="transform-btn flip-y-btn flex-shrink-0" title="Flip Vertical">${transformIcons.flipY}</button>
+                                    <input type="range" class="rotate-slider w-full" min="0" max="360" value="0" step="1" title="Rotate">
+                                </div>
+                            </div>
+
+                        </div>
+                    </details>
+                </div>
+            `;
+        }
+
+        /**
+         * Sets the active layer UI
+         */
+        function selectLayer(layerId) {
+            // Deselect all other layers
+            document.querySelectorAll('#logo-canvas g').forEach(g => {
+                g.classList.remove('selected');
+            });
+            document.querySelectorAll('.layer-control-block details').forEach(details => {
+                // Don't close the panel if we're selecting it
+                if (details.closest('.layer-control-block').dataset.layerId != layerId) {
+                    details.open = false;
+                }
+            });
+            
+            if (layerId) {
+                // Select the new one
+                selectedLayerId = layerId;
+                const g = document.getElementById(`layer-g-${layerId}`);
+                if (g) g.classList.add('selected');
+                
+                // Open its control panel
+                const block = document.querySelector(`.layer-control-block[data-layer-id="${layerId}"]`);
+                if (block) {
+                    const details = block.querySelector('details');
+                    if (details) details.open = true;
+                }
+            } else {
+                selectedLayerId = null;
+            }
+        }
+
+        /**
+         * Wires up all event listeners for a specific layer's control block
+         * @param {number} layerId - The ID of the layer to wire up
+         */
+        function wireLayerControls(layerId) {
+            const block = document.querySelector(`.layer-control-block[data-layer-id="${layerId}"]`);
+            if (!block) return;
+
+            // Get all controls
+            const fillPicker = block.querySelector('.fill-picker');
+            const enableStrokeCheck = block.querySelector('.enable-stroke-check');
+            const strokeControlsWrapper = block.querySelector('.stroke-controls-wrapper');
+            const strokePicker = block.querySelector('.stroke-picker');
+            const strokeWidthSlider = block.querySelector('.stroke-width-slider');
+            const scaleSlider = block.querySelector('.scale-slider');
+            const removeBtn = block.querySelector('.remove-btn');
+            const layerPreview = block.querySelector('.layer-preview-thumbnail'); 
+            const fileInput = block.querySelector('.file-input');
+            const alignControls = block.querySelector('.align-controls');
+            
+            // NEW: Get transform controls
+            const flipXBtn = block.querySelector('.flip-x-btn');
+            const flipYBtn = block.querySelector('.flip-y-btn');
+            const rotateSlider = block.querySelector('.rotate-slider');
+
+
+            // Add listeners
+            fillPicker.addEventListener('input', (e) => updateLayer(layerId, { fill: e.target.value, overrideFill: true }));
+            
+            // Stroke controls logic
+            enableStrokeCheck.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    strokeControlsWrapper.classList.remove('hidden');
+                    let currentWidth = parseInt(strokeWidthSlider.value);
+                    if (currentWidth === 0) {
+                        currentWidth = 1;
+                        strokeWidthSlider.value = 1; 
+                    }
+                    updateLayer(layerId, { strokeWidth: currentWidth, overrideStroke: true, stroke: strokePicker.value });
+                } else {
+                    strokeControlsWrapper.classList.add('hidden');
+                    updateLayer(layerId, { strokeWidth: 0, overrideStroke: true });
+                }
+            });
+
+            strokePicker.addEventListener('input', (e) => updateLayer(layerId, { stroke: e.target.value, overrideStroke: true }));
+            strokeWidthSlider.addEventListener('input', (e) => updateLayer(layerId, { strokeWidth: parseInt(e.target.value), overrideStroke: true }));
+            
+            scaleSlider.addEventListener('input', (e) => updateLayer(layerId, { scale: parseFloat(e.target.value) }));
+            
+            // NEW: Transform listeners
+            flipXBtn.addEventListener('click', () => {
+                const layer = layers.find(l => l.id === layerId);
+                if(layer) updateLayer(layerId, { flipX: !layer.flipX }, true);
+            });
+            flipYBtn.addEventListener('click', () => {
+                const layer = layers.find(l => l.id === layerId);
+                if(layer) updateLayer(layerId, { flipY: !layer.flipY }, true);
+            });
+            rotateSlider.addEventListener('input', (e) => {
+                updateLayer(layerId, { rotate: parseInt(e.target.value) });
+            });
+            
+            // Stop propagation on remove button to prevent summary click
+            removeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                removeLayer(layerId)
+            });
+
+            // File Drop/Select (now on the preview element)
+            fileInput.addEventListener('change', (e) => {
+                if (e.target.files.length) handleFile(e.target.files[0], layerId);
+            });
+            layerPreview.addEventListener('click', () => fileInput.click());
+            layerPreview.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                layerPreview.classList.add('dragover');
+            });
+            layerPreview.addEventListener('dragleave', () => layerPreview.classList.remove('dragover'));
+            layerPreview.addEventListener('drop', (e) => {
+                e.preventDefault();
+                layerPreview.classList.remove('dragover');
+                if (e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0], layerId);
+            });
+            
+            // Alignment buttons
+            alignControls.addEventListener('click', (e) => {
+                const btn = e.target.closest('button');
+                if (btn && btn.dataset.align) {
+                    handleAlign(layerId, btn.dataset.align);
+                }
+            });
+        }
+
+        /**
+         * Updates a layer's state and re-renders its SVG and controls
+         * @param {number} layerId - The ID of the layer to update
+         * @param {object} updates - An object of properties to update (e.g., {x: 10, fill: '#FF0000'})
+         * @param {boolean} [forceControlUpdate=false] - Whether to force update the control panel inputs
+         */
+        function updateLayer(layerId, updates, forceControlUpdate = false) {
+            const layer = layers.find(l => l.id === layerId);
+            if (!layer) return;
+
+            // Apply updates to the layer state
+            Object.assign(layer, updates);
+
+            // Update SVG
+            const g = document.getElementById(`layer-g-${layerId}`);
+            if (!g) return;
+            
+            // If content updated, inject it
+            if (updates.content) {
+                g.innerHTML = layer.content;
+                // Clear old override flags on new content
+                layer.overrideFill = false;
+                layer.overrideStroke = false;
+            }
+    
+            // Apply fill/stroke to all relevant children ONLY if overridden
+            g.querySelectorAll('path, rect, circle, ellipse, polygon, polyline, text, tspan').forEach(el => {
+                if (layer.overrideFill) {
+                    el.setAttribute('fill', layer.fill);
+                }
+                if (layer.overrideStroke) {
+                    el.setAttribute('stroke', layer.stroke);
+                    el.setAttribute('stroke-width', layer.strokeWidth);
+                }
+            });
+
+            // Calculate bounding box if it's missing or content/scale changed
+            if (updates.content || !layer.bbox) {
+                try {
+                    layer.bbox = g.getBBox(); // Get BBox of the group
+                } catch (e) {
+                    // Path is likely empty or invalid
+                    layer.bbox = { x: 0, y: 0, width: 0, height: 0 };
+                }
+            }
+            
+            // *** NEW: Construct full transform string ***
+            const cx = layer.bbox ? layer.bbox.x + layer.bbox.width / 2 : 0;
+            const cy = layer.bbox ? layer.bbox.y + layer.bbox.height / 2 : 0;
+            const scaleX = layer.scale * (layer.flipX ? -1 : 1);
+            const scaleY = layer.scale * (layer.flipY ? -1 : 1);
+            
+            // This applies transforms in order: 
+            // 1. Move group to final (x, y)
+            // 2. Translate to local center
+            // 3. Rotate
+            // 4. Scale (which includes flip)
+            // 5. Translate back from local center
+            // This ensures scale and rotate happen around the object's center.
+            const transform = `translate(${layer.x}, ${layer.y}) ` +
+                              `translate(${cx}, ${cy}) ` +
+                              `rotate(${layer.rotate}) ` +
+                              `scale(${scaleX}, ${scaleY}) ` +
+                              `translate(${-cx}, ${-cy})`;
+            g.setAttribute('transform', transform);
+
+            
+            // *** Update Preview Thumbnail ***
+            if (updates.content || updates.overrideFill || updates.overrideStroke || updates.fill || updates.stroke || updates.strokeWidth) {
+                const block = document.querySelector(`.layer-control-block[data-layer-id="${layerId}"]`);
+                if (block) {
+                    const previewEl = block.querySelector('.layer-preview-thumbnail');
+                    if (previewEl) {
+                        if (layer.content && layer.bbox && layer.bbox.width > 0) {
+                            const previewContent = g.innerHTML;
+                            const vb = layer.bbox;
+                            const padding = (vb.width + vb.height) / 10; 
+                            const previewViewBox = `${vb.x - padding} ${vb.y - padding} ${vb.width + padding*2} ${vb.height + padding*2}`;
+
+                            previewEl.innerHTML = `
+                                <svg viewBox="${previewViewBox}" preserveAspectRatio="xMidYMid meet" style="width: 100%; height: 100%;">
+                                    <g>${previewContent}</g>
+                                </svg>
+                            `;
+                        } else {
+                            previewEl.innerHTML = `<span class="text-xs text-center text-gray-500">Drop/Click to add SVG</span>`;
+                        }
+                    }
+                }
+            }
+            
+            // Update controls if needed (e.g., loading a file or dragging)
+            if (forceControlUpdate) {
+                const block = document.querySelector(`.layer-control-block[data-layer-id="${layerId}"]`);
+                if (block) {
+                    block.querySelector('.fill-picker').value = layer.fill;
+                    block.querySelector('.stroke-picker').value = layer.stroke;
+                    block.querySelector('.stroke-width-slider').value = layer.strokeWidth;
+                    block.querySelector('.scale-slider').value = layer.scale;
+                    
+                    // NEW: Update transform controls
+                    block.querySelector('.rotate-slider').value = layer.rotate;
+                    block.querySelector('.flip-x-btn').classList.toggle('active-transform', !!layer.flipX);
+                    block.querySelector('.flip-y-btn').classList.toggle('active-transform', !!layer.flipY);
+
+
+                    // Update stroke checkbox state
+                    const enableStrokeCheck = block.querySelector('.enable-stroke-check');
+                    const strokeControlsWrapper = block.querySelector('.stroke-controls-wrapper');
+                    if (layer.strokeWidth > 0 || (layer.overrideStroke && layer.strokeWidth > 0)) {
+                        enableStrokeCheck.checked = true;
+                        strokeControlsWrapper.classList.remove('hidden');
+                    } else {
+                        enableStrokeCheck.checked = false;
+                        strokeControlsWrapper.classList.add('hidden');
+                    }
+                }
+            }
+        }
+
+        /**
+         * Removes a layer from the state, DOM, and SVG
+         * @param {number} layerId - The ID of the layer to remove
+         */
+        function removeLayer(layerId) {
+            // Remove from state
+            layers = layers.filter(l => l.id !== layerId);
+
+            // Remove from SVG
+            const g = document.getElementById(`layer-g-${layerId}`);
+            if (g) g.remove();
+
+            // Remove from Controls
+            const block = document.querySelector(`.layer-control-block[data-layer-id="${layerId}"]`);
+            if (block) block.remove();
+
+            // Deselect if it was selected
+            if (selectedLayerId === layerId) {
+                selectedLayerId = null;
+            }
+        }
+
+        /**
+         * Handles a file drop/select, reads the SVG, and updates the layer
+         * @param {File} file - The file object
+         * @param {number} layerId - The ID of the layer to apply the path to
+         */
+        function handleFile(file, layerId) {
+            if (!file || !file.type.includes('svg')) {
+                alert('Only .svg files are accepted.');
+                return;
+            }
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const text = e.target.result;
+                try {
+                    // Parse the SVG file text
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(text, 'image/svg+xml');
+                    
+                    // Find the <svg> element
+                    const svgNode = doc.querySelector('svg'); 
+                    
+                    if (svgNode) {
+                        // Get all children of the SVG, including <defs>
+                        const svgContent = svgNode.innerHTML;
+                        // Update layer with the new content
+                        updateLayer(layerId, { content: svgContent }, true); 
+                        
+                    } else {
+                        alert('Could not find an <svg> element in the file.');
+                    }
+                } catch (err) {
+                    alert('Error parsing SVG file.');
+                    console.error(err);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        /**
+         * Aligns a layer based on its visual bounding box
+         * @param {number} layerId - The ID of the layer to align
+         * @param {string} alignment - The type of alignment (e.g., 'left', 'vCenter')
+         */
+        function handleAlign(layerId, alignment) {
+            const layer = layers.find(l => l.id === layerId);
+            if (!layer || !layer.bbox) return;
+
+            const { bbox, scale } = layer;
+            // Use Math.abs, width/height can be 0 or negative in rare cases
+            if (Math.abs(bbox.width) < 1e-6 && Math.abs(bbox.height) < 1e-6) return; // Don't align empty paths
+            
+            // Calculate the *visual* bounding box after scaling
+            // NOTE: This alignment is based on the UN-TRANSFORMED bounding box.
+            // A more complex solution would be needed for aligning rotated/flipped shapes.
+            const visualBounds = {
+                x: bbox.x * scale,
+                y: bbox.y * scale,
+                width: bbox.width * scale,
+                height: bbox.height * scale
+            };
+            
+            let newX = layer.x;
+            let newY = layer.y;
+
+            // These calculations determine the 'x' translate value that will
+            // place the visual edge of the shape at the desired canvas edge.
+            switch(alignment) {
+                case 'left':
+                    newX = exportRect.x - visualBounds.x;
+                    break;
+                case 'hCenter':
+                    newX = canvasCenter.x - (visualBounds.x + visualBounds.width / 2);
+                    break;
+                case 'right':
+                    newX = (exportRect.x + exportRect.width) - (visualBounds.x + visualBounds.width);
+                    break;
+                case 'top':
+                    newY = exportRect.y - visualBounds.y;
+                    break;
+                case 'vCenter':
+                    newY = canvasCenter.y - (visualBounds.y + visualBounds.height / 2);
+                    break;
+                case 'bottom':
+                    newY = (exportRect.y + exportRect.height) - (visualBounds.y + visualBounds.height);
+                    break;
+            }
+
+            // Update the layer, but DON'T force control update (no x/y sliders)
+            updateLayer(layerId, { x: newX, y: newY }, false);
+        }
+
+        /**
+         * Exports the current canvas as a single SVG file
+         */
+        function handleExport() {
+            // Get the viewbox from the canvas
+            const svgViewBox = svgCanvas.getAttribute('viewBox');
+            
+            // Clone the live SVG canvas
+            const svgClone = svgCanvas.cloneNode(true);
+            
+            // Remove boundary and guides from the clone
+            svgClone.querySelector('#export-boundary')?.remove();
+            svgClone.querySelector('#guide-v')?.remove();
+            svgClone.querySelector('#guide-h')?.remove();
+            
+            // Remove selection classes
+            svgClone.querySelectorAll('g.selected').forEach(g => g.classList.remove('selected'));
+            
+            // Get the cleaned-up HTML
+            const svgContent = svgClone.innerHTML;
+
+            // Construct the clean, responsive SVG string
+            const finalSvgString = `
+                <svg viewBox="${svgViewBox}" xmlns="http://www.w3.org/2000/svg">
+                    ${svgContent}
+                </svg>
+            `;
+
+            // Create and trigger download
+            const blob = new Blob([finalSvgString.trim()], { type: 'image/svg+xml' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'custom-logo.svg';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // --- Global Drag Listeners ---
+        
+        /**
+         * Converts screen pixel delta to SVG coordinate delta
+         */
+        function screenDeltaToSVGDelta(deltaX, deltaY) {
+            if (!svgRect || !svgViewBox) {
+                 svgRect = svgCanvas.getBoundingClientRect();
+                 svgViewBox = svgCanvas.viewBox.baseVal;
+            }
+            const scaleX = svgViewBox.width / svgRect.width;
+            const scaleY = svgViewBox.height / svgRect.height;
+            
+            return {
+                x: deltaX * scaleX,
+                y: deltaY * scaleY
+            };
+        }
+
+        function handleMouseMove(e) {
+            if (!isDragging || !selectedLayerId) return;
+            
+            const layer = layers.find(l => l.id === selectedLayerId);
+            if (!layer || !layer.bbox) {
+                // Failsafe if bbox is not calculated yet
+                updateLayer(selectedLayerId, {}, false); // Force bbox calculation
+                return; 
+            }
+            
+            // Calculate screen pixel delta
+            const deltaX = e.clientX - dragStartMouse.x;
+            const deltaY = e.clientY - dragStartMouse.y;
+            
+            // Convert to SVG units
+            const svgDelta = screenDeltaToSVGDelta(deltaX, deltaY);
+            
+            // Calculate new layer position
+            let newX = dragStartLayer.x + svgDelta.x;
+            let newY = dragStartLayer.y + svgDelta.y;
+            
+            // --- Snapping Logic ---
+            const { bbox, scale } = layer;
+            // Get the bounding box of the *transformed* element
+            const g = document.getElementById(`layer-g-${layer.id}`);
+            const visualBBox = g.getBBox();
+            
+            const layerCenterX = visualBBox.x + visualBBox.width / 2;
+            const layerCenterY = visualBBox.y + visualBBox.height / 2;
+            
+            // Get snap threshold in SVG units
+            const svgSnapThreshold = screenDeltaToSVGDelta(snapThreshold, snapThreshold).x; 
+            
+            let snapX = false;
+            let snapY = false;
+
+            // Calculate where the new center *would* be
+            const prospectiveCenterX = layerCenterX + (newX - layer.x);
+            const prospectiveCenterY = layerCenterY + (newY - layer.y);
+            
+            if (Math.abs(prospectiveCenterX - canvasCenter.x) < svgSnapThreshold) {
+                // Snap X
+                newX = layer.x + (canvasCenter.x - layerCenterX);
+                snapX = true;
+            }
+            if (Math.abs(prospectiveCenterY - canvasCenter.y) < svgSnapThreshold) {
+                // Snap Y
+                newY = layer.y + (canvasCenter.y - layerCenterY);
+                snapY = true;
+            }
+            
+            // Show/hide guides
+            if(guideV) guideV.style.display = snapX ? 'block' : 'none';
+            if(guideH) guideH.style.display = snapY ? 'block' : 'none';
+            
+            // Update the layer state
+            // Set forceControlUpdate to FALSE, since we don't have sliders to update
+            updateLayer(selectedLayerId, { x: newX, y: newY }, false);
+        }
+
+        function handleMouseUp() {
+            isDragging = false;
+            // Hide guides
+            if(guideV) guideV.style.display = 'none';
+            if(guideH) guideH.style.display = 'none';
+        }
+
+        // --- Initial Call ---
+        function initializeApp() {
+            // Get guide elements
+            guideV = document.getElementById('guide-v');
+            guideH = document.getElementById('guide-h');
+            
+            // Background Selector Logic
+            const bgSelector = document.getElementById('bg-selector');
+            const canvasBg = document.getElementById('canvas-bg');
+            
+            bgSelector.addEventListener('click', (e) => {
+                const target = e.target.closest('button');
+                if (!target) return;
+                
+                // Get new background class
+                const bgClass = target.dataset.bgClass;
+                
+                // Update buttons
+                bgSelector.querySelectorAll('button').forEach(btn => btn.classList.remove('active-bg'));
+                target.classList.add('active-bg');
+                
+                // Update canvas background
+                canvasBg.classList.remove('bg-white', 'bg-black', 'bg-checkerboard', 'bg-gray-100');
+                if (bgClass) {
+                    canvasBg.classList.add(bgClass);
+                }
+            });
+            
+            // Set initial active button
+            bgSelector.querySelector('[data-bg-class="bg-white"]').classList.add('active-bg');
+
+            // Add listeners to static buttons
+            addLayerBtn.addEventListener('click', () => addNewLayer(''));
+            exportBtn.addEventListener('click', handleExport);
+            
+            // Add global move/up listeners
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            
+            // Add canvas click listener for deselect
+            svgCanvas.addEventListener('mousedown', (e) => {
+                // Deselect if the click is on the canvas itself (or the rect)
+                if (e.target.id === 'logo-canvas' || e.target.id === 'export-boundary') {
+                    selectLayer(null);
+                }
+            });
+
+            // --- NEW: Global Drag/Drop Listeners ---
+            let dragCounter = 0; // Counter to handle nested drag events
+
+            window.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                // Check if files are being dragged
+                const types = e.dataTransfer.types;
+                if (types && Array.from(types).includes('Files')) {
+                    dragCounter++;
+                    globalDropZone.classList.add('visible');
+                }
+            });
+
+            window.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter === 0) {
+                    globalDropZone.classList.remove('visible');
+                }
+            });
+            
+            // Need to prevent default on window to allow drop
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+            });
+
+            // Use the 'drop' event on the window or a full-page overlay
+            // Using the overlay is cleaner
+            globalDropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragCounter = 0; // Reset counter
+                globalDropZone.classList.remove('visible');
+                
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    // Create a new layer for each valid SVG file
+                    Array.from(files).forEach(file => {
+                        if (file.type.includes('svg')) {
+                            const newLayerId = addNewLayer(''); // Create a new, blank layer
+                            handleFile(file, newLayerId);    // Load the file into it
+                        }
+                    });
+                }
+            });
+            
+            // App now starts blank.
+        }
+
+        // Run the app
+        initializeApp();
+
+    </script>
+
+</body>
+</html>

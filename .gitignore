@@ -1,0 +1,6 @@
+*.log
+*.env
+.env/
+.ignore/
+.log/
+.DS_store
