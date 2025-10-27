@@ -1,6 +1,6 @@
 # Single-Page Applications
 
-This is a collection of single-page applications (SPAs) that I have built/curated.
+This is a collection of single-page applications (SPAs) that I've made/curated.
 
 ## [SVG Editor](svg_editor.html)
 
@@ -9,11 +9,16 @@ This is a collection of single-page applications (SPAs) that I have built/curate
 A simple SVG editor that allows you to edit multiple SVG files and export them as SVG file.
 
 features
-- add/edit SVG elements (not create)
+- add/edit SVG elements (creation: TBA)
 - transform SVG elements (align, flip, rotate, scale)
 - modify SVG element properties (fill, add custom stroke)
-- preview using different background (white, black, transparent)
+- preview using different background (white, black, transparent) 
 - export SVG file
 
-Fun fact: I built this editor while attempting to make logos with SVG files. I found it to be a useful tool, and decided to share it with others.
+update:
+- added undo/redo functionality
+- scale size input, rotate angle input
+- layer renaming, layer ordering
+- center guidelines
 
+Fun fact: I created this while attempting to make logos with SVG files.
