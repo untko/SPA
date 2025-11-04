@@ -22,3 +22,9 @@ update:
 - center guidelines
 
 Fun fact: I created this while attempting to make logos with SVG files.
+
+## [Background Remover](https://github.com/untko/bg_remover)
+
+A simple and stylish single-page application for removing backgrounds from images, built with React and Vite.
+
+![example](https://github.com/untko/bg_remover/blob/main/example/example.png)
